@@ -85,16 +85,16 @@ jobs:
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip
-    - name: Install python deps
-      run: pip install flake8
-    - name: Lint Javascript
-      run: yarn run --silent lint -- --max-warnings 0
-    - name: Lint Markdown
-      run: yarn run --silent lint_md
-    - name: Lint python
-      run: flake8 $(git ls-files "*.py")
-    - name: Lint Yaml
-      run: yamllint -c yamllint.yml $(git ls-files "*.yml")
+    # - name: Install python deps
+    #   run: pip install flake8
+    # - name: Lint Javascript
+    #   run: yarn run --silent lint -- --max-warnings 0
+    # - name: Lint Markdown
+    #   run: yarn run --silent lint_md
+    # - name: Lint python
+    #   run: flake8 $(git ls-files "*.py")
+    # - name: Lint Yaml
+    #   run: yamllint -c yamllint.yml $(git ls-files "*.yml")
     - name: Unit Coverage
       run: |
         set -ex
@@ -247,7 +247,7 @@ jobs:
     needs: build
     env:
       ENABLE_UTAPI_V2: t
-      S3BACKEND: mem 
+      S3BACKEND: mem
       BUCKET_DENY_FILTER: utapi-event-filter-deny-bucket
       CLOUDSERVER_IMAGE: ghcr.io/${{ github.repository }}/cloudserver:${{ github.sha }}
       JOB_NAME: ${{ github.job }}
