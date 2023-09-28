@@ -201,7 +201,6 @@ describe('objectDelete API', () => {
                             sinon.match.any,
                             sinon.match.any
                         );
-                        // sinon.assert.calledWith(
                         done();
                     });
                 });
