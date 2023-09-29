@@ -185,6 +185,10 @@ const constants = {
         ORPHAN_DM_TYPE: 'orphan',
     },
     maxScannedLifecycleListingEntries: 10000,
+    overheadField: [
+        'content-length',
+        'owner-id',
+    ],
 };
 
 module.exports = constants;
