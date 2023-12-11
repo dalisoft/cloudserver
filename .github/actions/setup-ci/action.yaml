@@ -29,4 +29,4 @@ runs:
         key: ${{ runner.os }}-pip
     - name: Install python deps
       shell: bash
-      run: pip install docker-compose
+      run: pip install docker compose
