@@ -10,30 +10,34 @@ on:
 env:
   # Secrets
   azurebackend_AZURE_STORAGE_ACCESS_KEY: >-
-    ${{ secrets.AZURE_STORAGE_ACCESS_KEY }}
+    ${{ secrets.AZURE_STORAGE_ACCESS_KEY_V1 }}
   azurebackend_AZURE_STORAGE_ACCOUNT_NAME: >-
-    ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+    ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME_TMP }}
   azurebackend_AZURE_STORAGE_ENDPOINT: >-
-    ${{ secrets.AZURE_STORAGE_ENDPOINT }}
+    ${{ secrets.AZURE_STORAGE_ENDPOINT_TMP }}
+
   azurebackend2_AZURE_STORAGE_ACCESS_KEY: >-
-    ${{ secrets.AZURE_STORAGE_ACCESS_KEY_2 }}
+    ${{ secrets.AZURE_STORAGE_ACCESS_KEY_2_V1 }}
   azurebackend2_AZURE_STORAGE_ACCOUNT_NAME: >-
-    ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME_2 }}
+    ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME_2_TMP }}
   azurebackend2_AZURE_STORAGE_ENDPOINT: >-
-    ${{ secrets.AZURE_STORAGE_ENDPOINT_2 }}
+    ${{ secrets.AZURE_STORAGE_ENDPOINT_2_TMP }}
+
   azurebackendmismatch_AZURE_STORAGE_ACCESS_KEY: >-
-    ${{ secrets.AZURE_STORAGE_ACCESS_KEY }}
+    ${{ secrets.AZURE_STORAGE_ACCESS_KEY_V1 }}
   azurebackendmismatch_AZURE_STORAGE_ACCOUNT_NAME: >-
-    ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+    ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME_TMP }}
   azurebackendmismatch_AZURE_STORAGE_ENDPOINT: >-
-    ${{ secrets.AZURE_STORAGE_ENDPOINT }}
+    ${{ secrets.AZURE_STORAGE_ENDPOINT_TMP }}
+
   azurenonexistcontainer_AZURE_STORAGE_ACCESS_KEY: >-
-    ${{ secrets.AZURE_STORAGE_ACCESS_KEY }}
+    ${{ secrets.AZURE_STORAGE_ACCESS_KEY_V1 }}
   azurenonexistcontainer_AZURE_STORAGE_ACCOUNT_NAME: >-
-    ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+    ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME_TMP }}
   azurenonexistcontainer_AZURE_STORAGE_ENDPOINT: >-
-    ${{ secrets.AZURE_STORAGE_ENDPOINT }}
-  azuretest_AZURE_BLOB_ENDPOINT: "${{ secrets.AZURE_STORAGE_ENDPOINT }}"
+    ${{ secrets.AZURE_STORAGE_ENDPOINT_TMP }}
+  azuretest_AZURE_BLOB_ENDPOINT: "${{ secrets.AZURE_STORAGE_ENDPOINT_TMP }}"
+
   b2backend_B2_ACCOUNT_ID: "${{ secrets.B2BACKEND_B2_ACCOUNT_ID }}"
   b2backend_B2_STORAGE_ACCESS_KEY: >-
     ${{ secrets.B2BACKEND_B2_STORAGE_ACCESS_KEY }}
