@@ -30,6 +30,7 @@ const metadataswitch = require('../metadataswitch');
 const { metadata } = storage.metadata.inMemory.metadata;
 const metadataBackend = storage.metadata.inMemory.metastore;
 const { ds } = storage.data.inMemory.datastore;
+const ms = storage.metadata.inMemory.metastore;
 
 const log = new DummyRequestLogger();
 
@@ -141,7 +142,6 @@ function _createCompleteMpuRequest(uploadId, parts) {
         actionImplicitDenies: false,
     };
 }
-
 
 describe('Multipart Upload API', () => {
     beforeEach(() => {
@@ -1917,6 +1917,160 @@ describe('Multipart Upload API', () => {
             done();
         });
     });
+
+    it('should abort an MPU and delete its MD if it has been created by a failed complete before', done => {
+        const delMeta = ms.deleteObject;
+        ms.deleteObject = (bucketName, objName, params, log, cb) => cb(errors.InternalError);
+        const partBody = Buffer.from('I am a part\n', 'utf8');
+        initiateRequest.headers['x-amz-meta-stuff'] =
+            'I am some user metadata';
+        async.waterfall([
+            next => bucketPut(authInfo, bucketPutRequest, log, next),
+            (corsHeaders, next) => initiateMultipartUpload(authInfo,
+                initiateRequest, log, next),
+            (result, corsHeaders, next) => parseString(result, next),
+        ],
+        (err, json) => {
+            assert.ifError(err);
+            const testUploadId =
+                json.InitiateMultipartUploadResult.UploadId[0];
+            const md5Hash = crypto.createHash('md5').update(partBody);
+            const calculatedHash = md5Hash.digest('hex');
+            const partRequest = new DummyRequest({
+                bucketName,
+                namespace,
+                objectKey,
+                headers: { host: `${bucketName}.s3.amazonaws.com` },
+                url: `/${objectKey}?partNumber=1&uploadId=${testUploadId}`,
+                query: {
+                    partNumber: '1',
+                    uploadId: testUploadId,
+                },
+                calculatedHash,
+            }, partBody);
+            objectPutPart(authInfo, partRequest, undefined, log, () => {
+                const completeBody = '<CompleteMultipartUpload>' +
+                    '<Part>' +
+                    '<PartNumber>1</PartNumber>' +
+                    `<ETag>"${calculatedHash}"</ETag>` +
+                    '</Part>' +
+                    '</CompleteMultipartUpload>';
+                const completeRequest = {
+                    bucketName,
+                    namespace,
+                    objectKey,
+                    parsedHost: 's3.amazonaws.com',
+                    url: `/${objectKey}?uploadId=${testUploadId}`,
+                    headers: { host: `${bucketName}.s3.amazonaws.com` },
+                    query: { uploadId: testUploadId },
+                    post: completeBody,
+                    actionImplicitDenies: false,
+                };
+                completeMultipartUpload(authInfo,
+                    completeRequest, log, err => {
+                        assert(err.is.InternalError);
+                        const MD = metadata.keyMaps.get(bucketName)
+                                                    .get(objectKey);
+                        assert(MD);
+                        assert.strictEqual(MD['x-amz-meta-stuff'],
+                            'I am some user metadata');
+                        assert.strictEqual(MD.uploadId, testUploadId);
+
+                        ms.deleteObject = delMeta;
+                        const deleteRequest = {
+                            bucketName,
+                            namespace,
+                            objectKey,
+                            url: `/${objectKey}?uploadId=${testUploadId}`,
+                            headers: { host: `${bucketName}.s3.amazonaws.com` },
+                            query: { uploadId: testUploadId },
+                            actionImplicitDenies: false,
+                        };
+                        assert.strictEqual(metadata.keyMaps.get(mpuBucket).size, 2);
+                        multipartDelete(authInfo, deleteRequest, log, err => {
+                            assert.strictEqual(err, null);
+                            assert.strictEqual(metadata.keyMaps.get(mpuBucket).size, 0);
+                            done();
+                        });
+                    });
+            });
+        });
+    });
+
+    it('should complete an MPU and promote its MD if it has been created by a failed complete before', done => {
+        const delMeta = ms.deleteObject;
+        ms.deleteObject = (bucketName, objName, params, log, cb) => cb(errors.InternalError);
+        const partBody = Buffer.from('I am a part\n', 'utf8');
+        initiateRequest.headers['x-amz-meta-stuff'] =
+            'I am some user metadata';
+        async.waterfall([
+            next => bucketPut(authInfo, bucketPutRequest, log, next),
+            (corsHeaders, next) => initiateMultipartUpload(authInfo,
+                initiateRequest, log, next),
+            (result, corsHeaders, next) => parseString(result, next),
+        ],
+        (err, json) => {
+            assert.ifError(err);
+            const testUploadId =
+                json.InitiateMultipartUploadResult.UploadId[0];
+            const md5Hash = crypto.createHash('md5').update(partBody);
+            const calculatedHash = md5Hash.digest('hex');
+            const partRequest = new DummyRequest({
+                bucketName,
+                namespace,
+                objectKey,
+                headers: { host: `${bucketName}.s3.amazonaws.com` },
+                url: `/${objectKey}?partNumber=1&uploadId=${testUploadId}`,
+                query: {
+                    partNumber: '1',
+                    uploadId: testUploadId,
+                },
+                calculatedHash,
+            }, partBody);
+            objectPutPart(authInfo, partRequest, undefined, log, () => {
+                const completeBody = '<CompleteMultipartUpload>' +
+                    '<Part>' +
+                    '<PartNumber>1</PartNumber>' +
+                    `<ETag>"${calculatedHash}"</ETag>` +
+                    '</Part>' +
+                    '</CompleteMultipartUpload>';
+                const completeRequest = {
+                    bucketName,
+                    namespace,
+                    objectKey,
+                    parsedHost: 's3.amazonaws.com',
+                    url: `/${objectKey}?uploadId=${testUploadId}`,
+                    headers: { host: `${bucketName}.s3.amazonaws.com` },
+                    query: { uploadId: testUploadId },
+                    post: completeBody,
+                    actionImplicitDenies: false,
+                };
+                completeMultipartUpload(authInfo,
+                    completeRequest, log, err => {
+                        assert(err.is.InternalError);
+                        const MD = metadata.keyMaps.get(bucketName)
+                                                    .get(objectKey);
+                        assert(MD);
+                        assert.strictEqual(MD['x-amz-meta-stuff'],
+                            'I am some user metadata');
+                        assert.strictEqual(MD.uploadId, testUploadId);
+                        ms.deleteObject = delMeta;
+                        assert.strictEqual(metadata.keyMaps.get(mpuBucket).size, 2);
+                        completeMultipartUpload(authInfo,
+                            completeRequest, log, err => {
+                                assert.ifError(err);
+                                const MD = metadata.keyMaps.get(bucketName)
+                                                    .get(objectKey);
+                                assert(MD);
+                                assert.strictEqual(MD['x-amz-meta-stuff'],
+                                    'I am some user metadata');
+                                assert.strictEqual(metadata.keyMaps.get(mpuBucket).size, 0);
+                                done();
+                            });
+                    });
+            });
+        });
+    });
 });
 
 describe('complete mpu with versioning', () => {
@@ -2148,6 +2302,85 @@ describe('complete mpu with versioning', () => {
                             `found "${key}"`);
             }
             done();
+        });
+    });
+
+    it('should complete an MPU and promote its MD if it has been created by a failed complete before' +
+        'without creating a new version', done => {
+        const delMeta = ms.deleteObject;
+        ms.deleteObject = (bucketName, objName, params, log, cb) => cb(errors.InternalError);
+        const partBody = Buffer.from('I am a part\n', 'utf8');
+        initiateRequest.headers['x-amz-meta-stuff'] =
+            'I am some user metadata';
+        async.waterfall([
+            next => bucketPutVersioning(authInfo,
+                enableVersioningRequest, log, err => next(err)),
+            next => initiateMultipartUpload(authInfo,
+                initiateRequest, log, next),
+            (result, corsHeaders, next) => parseString(result, next),
+        ],
+        (err, json) => {
+            assert.ifError(err);
+            const testUploadId =
+                json.InitiateMultipartUploadResult.UploadId[0];
+            const md5Hash = crypto.createHash('md5').update(partBody);
+            const calculatedHash = md5Hash.digest('hex');
+            const partRequest = new DummyRequest({
+                bucketName,
+                namespace,
+                objectKey,
+                headers: { host: `${bucketName}.s3.amazonaws.com` },
+                url: `/${objectKey}?partNumber=1&uploadId=${testUploadId}`,
+                query: {
+                    partNumber: '1',
+                    uploadId: testUploadId,
+                },
+                calculatedHash,
+            }, partBody);
+            objectPutPart(authInfo, partRequest, undefined, log, () => {
+                const completeBody = '<CompleteMultipartUpload>' +
+                    '<Part>' +
+                    '<PartNumber>1</PartNumber>' +
+                    `<ETag>"${calculatedHash}"</ETag>` +
+                    '</Part>' +
+                    '</CompleteMultipartUpload>';
+                const completeRequest = {
+                    bucketName,
+                    namespace,
+                    objectKey,
+                    parsedHost: 's3.amazonaws.com',
+                    url: `/${objectKey}?uploadId=${testUploadId}`,
+                    headers: { host: `${bucketName}.s3.amazonaws.com` },
+                    query: { uploadId: testUploadId },
+                    post: completeBody,
+                    actionImplicitDenies: false,
+                };
+                completeMultipartUpload(authInfo,
+                    completeRequest, log, err => {
+                        assert(err.is.InternalError);
+                        const MD = metadata.keyMaps.get(bucketName)
+                                                    .get(objectKey);
+                        assert(MD);
+                        const firstVersionId = MD.versionId;
+                        assert.strictEqual(MD['x-amz-meta-stuff'],
+                            'I am some user metadata');
+                        assert.strictEqual(MD.uploadId, testUploadId);
+                        ms.deleteObject = delMeta;
+                        assert.strictEqual(metadata.keyMaps.get(mpuBucket).size, 2);
+                        completeMultipartUpload(authInfo,
+                            completeRequest, log, err => {
+                                assert.ifError(err);
+                                const MD = metadata.keyMaps.get(bucketName)
+                                                    .get(objectKey);
+                                assert(MD);
+                                assert.strictEqual(MD.versionId, firstVersionId);
+                                assert.strictEqual(MD['x-amz-meta-stuff'],
+                                    'I am some user metadata');
+                                assert.strictEqual(metadata.keyMaps.get(mpuBucket).size, 0);
+                                done();
+                            });
+                    });
+            });
         });
     });
 });
