@@ -2048,8 +2048,7 @@ describe('Multipart Upload API', () => {
                 completeMultipartUpload(authInfo,
                     completeRequest, log, err => {
                         assert(err.is.InternalError);
-                        const MD = metadata.keyMaps.get(bucketName)
-                                                    .get(objectKey);
+                        const MD = metadata.keyMaps.get(bucketName).get(objectKey);
                         assert(MD);
                         assert.strictEqual(MD['x-amz-meta-stuff'],
                             'I am some user metadata');
