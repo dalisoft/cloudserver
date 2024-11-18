@@ -30,7 +30,6 @@ const metadataswitch = require('../metadataswitch');
 const { metadata } = storage.metadata.inMemory.metadata;
 const metadataBackend = storage.metadata.inMemory.metastore;
 const { ds } = storage.data.inMemory.datastore;
-const ms = storage.metadata.inMemory.metastore;
 
 const log = new DummyRequestLogger();
 
@@ -1919,8 +1918,8 @@ describe('Multipart Upload API', () => {
     });
 
     it('should abort an MPU and delete its MD if it has been created by a failed complete before', done => {
-        const delMeta = ms.deleteObject;
-        ms.deleteObject = (bucketName, objName, params, log, cb) => cb(errors.InternalError);
+        const delMeta = metadataBackend.deleteObject;
+        metadataBackend.deleteObject = (bucketName, objName, params, log, cb) => cb(errors.InternalError);
         const partBody = Buffer.from('I am a part\n', 'utf8');
         initiateRequest.headers['x-amz-meta-stuff'] =
             'I am some user metadata';
@@ -1976,7 +1975,7 @@ describe('Multipart Upload API', () => {
                             'I am some user metadata');
                         assert.strictEqual(MD.uploadId, testUploadId);
 
-                        ms.deleteObject = delMeta;
+                        metadataBackend.deleteObject = delMeta;
                         const deleteRequest = {
                             bucketName,
                             namespace,
@@ -1998,8 +1997,8 @@ describe('Multipart Upload API', () => {
     });
 
     it('should complete an MPU and promote its MD if it has been created by a failed complete before', done => {
-        const delMeta = ms.deleteObject;
-        ms.deleteObject = (bucketName, objName, params, log, cb) => cb(errors.InternalError);
+        const delMeta = metadataBackend.deleteObject;
+        metadataBackend.deleteObject = (bucketName, objName, params, log, cb) => cb(errors.InternalError);
         const partBody = Buffer.from('I am a part\n', 'utf8');
         initiateRequest.headers['x-amz-meta-stuff'] =
             'I am some user metadata';
@@ -2053,7 +2052,7 @@ describe('Multipart Upload API', () => {
                         assert.strictEqual(MD['x-amz-meta-stuff'],
                             'I am some user metadata');
                         assert.strictEqual(MD.uploadId, testUploadId);
-                        ms.deleteObject = delMeta;
+                        metadataBackend.deleteObject = delMeta;
                         assert.strictEqual(metadata.keyMaps.get(mpuBucket).size, 2);
                         completeMultipartUpload(authInfo,
                             completeRequest, log, err => {
@@ -2306,8 +2305,8 @@ describe('complete mpu with versioning', () => {
 
     it('should complete an MPU and promote its MD if it has been created by a failed complete before' +
         'without creating a new version', done => {
-        const delMeta = ms.deleteObject;
-        ms.deleteObject = (bucketName, objName, params, log, cb) => cb(errors.InternalError);
+        const delMeta = metadataBackend.deleteObject;
+        metadataBackend.deleteObject = (bucketName, objName, params, log, cb) => cb(errors.InternalError);
         const partBody = Buffer.from('I am a part\n', 'utf8');
         initiateRequest.headers['x-amz-meta-stuff'] =
             'I am some user metadata';
@@ -2364,7 +2363,7 @@ describe('complete mpu with versioning', () => {
                         assert.strictEqual(MD['x-amz-meta-stuff'],
                             'I am some user metadata');
                         assert.strictEqual(MD.uploadId, testUploadId);
-                        ms.deleteObject = delMeta;
+                        metadataBackend.deleteObject = delMeta;
                         assert.strictEqual(metadata.keyMaps.get(mpuBucket).size, 2);
                         completeMultipartUpload(authInfo,
                             completeRequest, log, err => {
