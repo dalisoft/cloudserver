@@ -140,6 +140,32 @@ describe('validateQuotas (buckets)', () => {
         });
     });
 
+    it('should decrease the inflights by deleting data, and go below 0 to unblock operations', done => {
+        const result1 = {
+            bytesTotal: 150,
+        };
+        const result2 = {
+            bytesTotal: 120,
+        };
+        QuotaService._getLatestMetricsCallback.yields(null, result1);
+        QuotaService._getLatestMetricsCallback.onCall(1).yields(null, result2);
+
+        validateQuotas(request, mockBucket, {}, ['objectDelete'], 'objectDelete', -5000, false, mockLog, err => {
+            assert.ifError(err);
+            assert.strictEqual(QuotaService._getLatestMetricsCallback.calledOnce, true);
+            assert.strictEqual(QuotaService._getLatestMetricsCallback.calledWith(
+                'bucket',
+                'bucketName_1640995200000',
+                null,
+                {
+                    action: 'objectDelete',
+                    inflight: -5000,
+                }
+            ), true);
+            done();
+        });
+    });
+
     it('should return null if quota is not exceeded', done => {
         const result1 = {
             bytesTotal: 80,
@@ -358,6 +384,35 @@ describe('validateQuotas (with accounts)', () => {
                 {
                     action: 'objectDelete',
                     inflight: -50,
+                }
+            ), true);
+            done();
+        });
+    });
+
+    it('should decrease the inflights by deleting data, and go below 0 to unblock operations', done => {
+        const result1 = {
+            bytesTotal: 150,
+        };
+        const result2 = {
+            bytesTotal: 120,
+        };
+        QuotaService._getLatestMetricsCallback.yields(null, result1);
+        QuotaService._getLatestMetricsCallback.onCall(1).yields(null, result2);
+
+        validateQuotas(request, mockBucketNoQuota, {
+            account: 'test_1',
+            quota: 1000,
+        }, ['objectDelete'], 'objectDelete', -5000, false, mockLog, err => {
+            assert.ifError(err);
+            assert.strictEqual(QuotaService._getLatestMetricsCallback.callCount, 1);
+            assert.strictEqual(QuotaService._getLatestMetricsCallback.calledWith(
+                'account',
+                'test_1',
+                null,
+                {
+                    action: 'objectDelete',
+                    inflight: -5000,
                 }
             ), true);
             done();
