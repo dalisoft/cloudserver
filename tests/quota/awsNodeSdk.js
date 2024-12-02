@@ -607,6 +607,60 @@ function multiObjectDelete(bucket, keys, size, callback) {
             ], done);
         });
 
+        it('should allow writes after deleting data with quotas below the current number of inflights', done => {
+            const bucket = 'quota-test-bucket8';
+            const key = 'quota-test-object';
+            const size = 400;
+            if (!s3Config.isQuotaInflightEnabled()) {
+                return done();
+            }
+            return async.series([
+                next => createBucket(bucket, false, next),
+                // Set the quota to 10 * size (4000)
+                next => sendRequest(putQuotaVerb, '127.0.0.1:8000', `/${bucket}/?quota=true`,
+                    JSON.stringify({ quota: 10 * size }), config).then(() => next()).catch(err => next(err)),
+                // Simulate previous operations since last metrics update (4000 bytes)
+                next => putObject(bucket, `${key}1`, 5 * size, err => {
+                    assert.ifError(err);
+                    return next();
+                }),
+                next => putObject(bucket, `${key}2`, 5 * size, err => {
+                    assert.ifError(err);
+                    return next();
+                }),
+                next => wait(inflightFlushFrequencyMS * 2, next),
+                // After metrics update, set the inflights to 0 (simulate end of metrics update)
+                next => {
+                    scuba.setInflightAsCapacity(bucket);
+                    return next();
+                },
+                // Here we have 0 inflight but the stored bytes are 4000 (equal to the quota)
+                // Should reject new write with QuotaExceeded (4000 + 400)
+                next => putObject(bucket, `${key}3`, size, err => {
+                    assert.strictEqual(err.code, 'QuotaExceeded');
+                    return next();
+                }),
+                next => wait(inflightFlushFrequencyMS * 2, next),
+                // Should still have 0 as inflight
+                next => {
+                    assert.strictEqual(scuba.getInflightsForBucket(bucket), 0);
+                    return next();
+                },
+                next => wait(inflightFlushFrequencyMS * 2, next),
+                // Now delete one object (2000 bytes), it should let us write again
+                next => deleteObject(bucket, `${key}1`, size, next),
+                next => wait(inflightFlushFrequencyMS * 2, next),
+                next => putObject(bucket, `${key}4`, 5 * size, err => {
+                    assert.ifError(err);
+                    return next();
+                }),
+                // Cleanup
+                next => deleteObject(bucket, `${key}2`, size, next),
+                next => deleteObject(bucket, `${key}4`, size, next),
+                next => deleteBucket(bucket, next),
+            ], done);
+        });
+
         it('should not increase the inflights when the object is being rewritten with a smaller object', done => {
             const bucket = 'quota-test-bucket9';
             const key = 'quota-test-object';
@@ -664,6 +718,53 @@ function multiObjectDelete(bucket, keys, size, callback) {
                     assert.strictEqual(scuba.getInflightsForBucket(bucket), 0);
                     return next();
                 },
+                next => deleteBucket(bucket, next),
+            ], done);
+        });
+
+        it('should allow writes after multi-deleting data with quotas below the current number of inflights', done => {
+            const bucket = 'quota-test-bucket10';
+            const key = 'quota-test-object';
+            const size = 400;
+            if (!s3Config.isQuotaInflightEnabled()) {
+                return done();
+            }
+            return async.series([
+                next => createBucket(bucket, false, next),
+                next => sendRequest(putQuotaVerb, '127.0.0.1:8000', `/${bucket}/?quota=true`,
+                    JSON.stringify({ quota: size * 10 }), config).then(() => next()).catch(err => next(err)),
+                next => putObject(bucket, `${key}1`, size * 5, err => {
+                    assert.ifError(err);
+                    return next();
+                }),
+                next => putObject(bucket, `${key}2`, size * 5, err => {
+                    assert.ifError(err);
+                    return next();
+                }),
+                next => wait(inflightFlushFrequencyMS * 2, next),
+                next => {
+                    scuba.setInflightAsCapacity(bucket);
+                    return next();
+                },
+                next => putObject(bucket, `${key}3`, size, err => {
+                    assert.strictEqual(err.code, 'QuotaExceeded');
+                    return next();
+                }),
+                next => wait(inflightFlushFrequencyMS * 2, next),
+                next => {
+                    assert.strictEqual(scuba.getInflightsForBucket(bucket), 0);
+                    return next();
+                },
+                next => multiObjectDelete(bucket, [`${key}1`, `${key}2`], size * 10, err => {
+                    assert.ifError(err);
+                    return next();
+                }),
+                next => wait(inflightFlushFrequencyMS * 2, next),
+                next => putObject(bucket, `${key}4`, size * 5, err => {
+                    assert.ifError(err);
+                    return next();
+                }),
+                next => deleteObject(bucket, `${key}4`, size * 5, next),
                 next => deleteBucket(bucket, next),
             ], done);
         });

@@ -62,6 +62,8 @@ class Scuba {
         if (timeout && this.supportsInflight) {
             setTimeout(() => {
                 if (this._data.bucket.get(bucket)) {
+                    // eslint-disable-next-line no-console
+                    console.log(`Updating bucket ${bucket} with inflight ${inflight}`);
                     this._data.bucket.set(bucket, {
                         current: this._data.bucket.get(bucket).current,
                         nonCurrent: this._data.bucket.get(bucket).nonCurrent,
@@ -93,6 +95,21 @@ class Scuba {
 
     stop() {
         this._server.close();
+    }
+
+    setInflightAsCapacity(bucketName) {
+        if (!this.supportsInflight) {
+            return;
+        }
+        this._data.bucket.forEach((value, key) => {
+            if (key.startsWith(`${bucketName}_`)) {
+                // eslint-disable-next-line no-param-reassign
+                value.current += value.inflight;
+                // eslint-disable-next-line no-param-reassign
+                value.inflight = 0;
+                this._data.bucket.set(key, value);
+            }
+        });
     }
 
     getInflightsForBucket(bucketName) {
