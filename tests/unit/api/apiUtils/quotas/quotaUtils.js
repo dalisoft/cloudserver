@@ -595,32 +595,76 @@ describe('processBytesToWrite', () => {
         objMD = null;
     });
 
-    it('should return a negative number if the operation is a delete and bucket is not versioned', () => {
-        bucket.isVersioningEnabled.returns(false);
-        objMD = { 'content-length': 100 };
+    const hotObject = {
+        'content-length': 100,
+        dataStoreName: 'eu-west-1',
+    };
+    const coldObject = {
+        ...hotObject,
+        dataStoreName: 'glacier',
+        archive: {
+            archiveInfo: '{archiveID,archiveVersion}'
+        },
+    };
+    const restoringObject = {
+        ...coldObject,
+        archive: {
+            ...coldObject.archive,
+            restoreRequestedAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+            restoreRequestedDays: 1,
+        },
+    };
+    const restoredObject = {
+        ...restoringObject,
+        dataStoreName: 'eu-west-1',
+        'x-amz-storage-class': 'glacier',
+        archive: {
+            ...restoringObject.archive,
+            restoreCompletedAt: new Date(Date.now() - 3600 * 1000),
+            restoreWillExpireAt: new Date(Date.now() + 23 * 3600 * 1000),
+        },
+    };
+    const expiredObject = {
+        ...restoredObject,
+        archive: {
+            ...coldObject.archive,
+            restoreRequestedAt: new Date(Date.now() - 25 * 3600 * 1000 - 1000).toString(),
+            restoreRequestedDays: 1,
+            restoreCompletedAt: new Date(Date.now() - 24 * 3600 * 1000 - 1000),
+            restoreWillExpireAt: new Date(Date.now() - 1000),
+        },
+    };
 
-        const bytes = processBytesToWrite('objectDelete', bucket, versionId, contentLength, objMD);
+    [
+        // non versionned case
+        ['the content-length when deleting hot object', hotObject, false, undefined, -100],
+        ['0 when deleting cold object', coldObject, false, undefined, 0],
+        ['the content-length when deleting restoring object', restoringObject, false, undefined, -100],
+        ['the content-length when deleting restored object', restoredObject, false, undefined, -100],
+        ['the content-length when deleting expired object', expiredObject, false, undefined, -100],
 
-        assert.strictEqual(bytes, -100);
-    });
+        // versionned case
+        ['the content-length when deleting hot object version', hotObject, true, 'versionId', -100],
+        ['0 when deleting cold versioned object version', coldObject, true, 'versionId', 0],
+        ['the content-length when deleting restoring object version', restoringObject, true, 'versionId', -100],
+        ['the content-length when deleting restored object version', restoredObject, true, 'versionId', -100],
+        ['the content-length when deleting expired object version', expiredObject, true, 'versionId', -100],
 
-    it('should return 0 if the operation is a delete and bucket is versioned', () => {
-        bucket.isVersioningEnabled.returns(true);
-        objMD = { 'content-length': 100 };
+        // delete marker case
+        ['0 when adding delete marker over hot object', hotObject, true, undefined, 0],
+        ['0 when adding delete marker over cold object', coldObject, true, undefined, 0],
+        ['0 when adding delete marker over restoring object', restoringObject, true, undefined, 0],
+        ['0 when adding delete marker over restored object', restoredObject, true, undefined, 0],
+        ['0 when adding delete marker over expired object', expiredObject, true, undefined, 0],
+    ].forEach(([scenario, object, versionned, reqVersionId, expected]) => {
+        it(`should return ${scenario}`, () => {
+            bucket.isVersioningEnabled.returns(versionned);
+            objMD = object;
 
-        const bytes = processBytesToWrite('objectDelete', bucket, versionId, contentLength, objMD);
+            const bytes = processBytesToWrite('objectDelete', bucket, reqVersionId, 0, objMD);
 
-        assert.strictEqual(bytes, 0);
-    });
-
-    it('should return a negative number for a versioned bucket with a versionid deletion', () => {
-        bucket.isVersioningEnabled.returns(true);
-        objMD = { 'content-length': 100 };
-        versionId = 'versionId';
-
-        const bytes = processBytesToWrite('objectDelete', bucket, versionId, contentLength, objMD);
-
-        assert.strictEqual(bytes, -100);
+            assert.strictEqual(bytes, expected);
+        });
     });
 
     it('should return 0 for a delete operation if the object metadata is missing', () => {
@@ -694,6 +738,16 @@ describe('processBytesToWrite', () => {
         bucket.isVersioningEnabled.returns(true);
         objMD = { 'content-length': 100 };
         const destObjMD = { 'content-length': 20 };
+
+        const bytes = processBytesToWrite('objectCopy', bucket, versionId, 0, objMD, destObjMD);
+
+        assert.strictEqual(bytes, 100);
+    });
+
+    it('should not detect object replacement during copy object operation if the object is cold', () => {
+        bucket.isVersioningEnabled.returns(true);
+        objMD = { 'content-length': 100 };
+        const destObjMD = coldObject;
 
         const bytes = processBytesToWrite('objectCopy', bucket, versionId, 0, objMD, destObjMD);
 
