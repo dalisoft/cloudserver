@@ -42,7 +42,11 @@ describe('getObjMetadataAndDelete function for multiObjectDelete', () => {
         headers: {},
         parsedContentLength: contentLength,
     }, postBody);
-    const bucket = { getVersioningConfiguration: () => null, getQuota: () => 0 };
+    const bucket = {
+        isVersioningEnabled: () => false,
+        getVersioningConfiguration: () => null,
+        getQuota: () => 0,
+    };
 
     beforeEach(done => {
         cleanup();
