@@ -7,6 +7,7 @@ const {
     isMetricStale,
 } = require('../../../../../lib/api/apiUtils/quotas/quotaUtils');
 const QuotaService = require('../../../../../lib/quotas/quotas');
+const BucketInfo = require('arsenal').models.BucketInfo;
 
 const mockLog = {
     warn: sinon.stub(),
@@ -637,28 +638,43 @@ describe('processBytesToWrite', () => {
 
     [
         // non versionned case
-        ['the content-length when deleting hot object', hotObject, false, undefined, -100],
-        ['0 when deleting cold object', coldObject, false, undefined, 0],
-        ['the content-length when deleting restoring object', restoringObject, false, undefined, -100],
-        ['the content-length when deleting restored object', restoredObject, false, undefined, -100],
-        ['the content-length when deleting expired object', expiredObject, false, undefined, -100],
+        ['the length when deleting hot object', hotObject, 'disabled', undefined, -100],
+        ['0 when deleting cold object', coldObject, 'disabled', undefined, 0],
+        ['the length when deleting restoring object', restoringObject, 'disabled', undefined, -100],
+        ['the length when deleting restored object', restoredObject, 'disabled', undefined, -100],
+        ['the length when deleting expired object', expiredObject, 'disabled', undefined, -100],
 
         // versionned case
-        ['the content-length when deleting hot object version', hotObject, true, 'versionId', -100],
-        ['0 when deleting cold versioned object version', coldObject, true, 'versionId', 0],
-        ['the content-length when deleting restoring object version', restoringObject, true, 'versionId', -100],
-        ['the content-length when deleting restored object version', restoredObject, true, 'versionId', -100],
-        ['the content-length when deleting expired object version', expiredObject, true, 'versionId', -100],
+        ['the length when deleting hot object version', hotObject, 'Enabled', 'versionId', -100],
+        ['0 when deleting cold versioned object version', coldObject, 'Enabled', 'versionId', 0],
+        ['the length when deleting restoring object version', restoringObject, 'Enabled', 'versionId', -100],
+        ['the length when deleting restored object version', restoredObject, 'Enabled', 'versionId', -100],
+        ['the length when deleting expired object version', expiredObject, 'Enabled', 'versionId', -100],
 
-        // delete marker case
-        ['0 when adding delete marker over hot object', hotObject, true, undefined, 0],
-        ['0 when adding delete marker over cold object', coldObject, true, undefined, 0],
-        ['0 when adding delete marker over restoring object', restoringObject, true, undefined, 0],
-        ['0 when adding delete marker over restored object', restoredObject, true, undefined, 0],
-        ['0 when adding delete marker over expired object', expiredObject, true, undefined, 0],
-    ].forEach(([scenario, object, versionned, reqVersionId, expected]) => {
-        it(`should return ${scenario}`, () => {
-            bucket.isVersioningEnabled.returns(versionned);
+        // delete marker in versionned case
+        ['0 when adding delete marker over hot object', hotObject, 'Enabled', undefined, 0],
+        ['0 when adding delete marker over cold object', coldObject, 'Enabled', undefined, 0],
+        ['0 when adding delete marker over restoring object', restoringObject, 'Enabled', undefined, 0],
+        ['0 when adding delete marker over restored object', restoredObject, 'Enabled', undefined, 0],
+        ['0 when adding delete marker over expired object', expiredObject, 'Enabled', undefined, 0],
+
+        // version-suspended case
+        ['the length when deleting hot object version', hotObject, 'Suspended', 'versionId', -100],
+        ['0 when deleting cold versioned object version', coldObject, 'Suspended', 'versionId', 0],
+        ['the length when deleting restoring object version', restoringObject, 'Suspended', 'versionId', -100],
+        ['the length when deleting restored object version', restoredObject, 'Suspended', 'versionId', -100],
+        ['the length when deleting expired object version', expiredObject, 'Suspended', 'versionId', -100],
+
+        // delete marker in version-suspended case
+        ['the length when adding delete marker over hot object', hotObject, 'Suspended', undefined, -100],
+        ['0 when adding delete marker over cold object', coldObject, 'Suspended', undefined, 0],
+        ['the length when adding delete marker over restoring object', restoringObject, 'Suspended', undefined, -100],
+        ['the length when adding delete marker over restored object', restoredObject, 'Suspended', undefined, -100],
+        ['the length when adding delete marker over expired object', expiredObject, 'Suspended', undefined, -100],
+    ].forEach(([scenario, object, versioningStatus, reqVersionId, expected]) => {
+        it(`should return ${scenario} and versioning is ${versioningStatus}`, () => {
+            const bucket = new BucketInfo('bucketName', 'ownerId', 'ownerName', new Date().toISOString());
+            bucket.setVersioningConfiguration({ Status: versioningStatus });
             objMD = object;
 
             const bytes = processBytesToWrite('objectDelete', bucket, reqVersionId, 0, objMD);
