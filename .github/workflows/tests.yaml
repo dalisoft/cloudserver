@@ -70,7 +70,7 @@ env:
   # https://github.com/git-lfs/git-lfs/issues/5749
   GIT_CLONE_PROTECTION_ACTIVE: 'false'
 jobs:
-  linting-coverage:
+  lint:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
@@ -98,6 +98,21 @@ jobs:
       run: flake8 $(git ls-files "*.py")
     - name: Lint Yaml
       run: yamllint -c yamllint.yml $(git ls-files "*.yml")
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '16'
+        cache: yarn
+    - name: install typescript
+      shell: bash
+      run: yarn global add typescript@4.9.5
+    - name: install dependencies
+      run: yarn install --frozen-lockfile --network-concurrency 1
     - name: Unit Coverage
       run: |
         set -ex
