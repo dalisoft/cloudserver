@@ -87,10 +87,7 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.9'
-    - uses: actions/cache@v4
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip
+        cache: pip
     - name: Install python deps
       run: pip install flake8
     - name: Lint Javascript
@@ -104,16 +101,23 @@ jobs:
     - name: Unit Coverage
       run: |
         set -ex
-        mkdir -p $CIRCLE_TEST_REPORTS/unit
-        yarn test
-        yarn run test_legacy_location
+        yarn run cover test
+        yarn run cover test_legacy_location
       env:
         S3_LOCATION_FILE: tests/locationConfig/locationConfigTests.json
-        CIRCLE_TEST_REPORTS: /tmp
-        CIRCLE_ARTIFACTS: /tmp
-        CI_REPORTS: /tmp
-    - name: Unit Coverage logs
-      run: find /tmp/unit -exec cat {} \;
+    - name: Upload test results to Codecov
+      uses: codecov/test-results-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: '**/junit/*junit*.xml'
+        flags: unit
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        directory: ./coverage/test
+        flags: unit
+      if: ${{ !cancelled() }}
     - name: preparing junit files for upload
       run: |
         mkdir -p artifacts/junit
