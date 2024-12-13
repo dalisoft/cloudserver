@@ -7,10 +7,12 @@ const ObjectMDArchive = require('arsenal').models.ObjectMDArchive;
 const BucketInfo = require('arsenal').models.BucketInfo;
 
 const defaultLocation = 'location-dmf-v1';
+const defaultOwnerId = '79a59df900b949e55d96a1e698fbacedfd6e09d98eacf8f8d5218e7cd47ef2be';
+const restoredEtag = '1234567890abcdef';
 
 const baseMd = {
     'owner-display-name': 'accessKey1displayName',
-    'owner-id': '79a59df900b949e55d96a1e698fbacedfd6e09d98eacf8f8d5218e7cd47ef2be',
+    'owner-id': defaultOwnerId,
     'content-length': 11,
     'content-md5': 'be747eb4b75517bf6b3cf7c5fbb62f3a',
     'content-language': '',
@@ -105,7 +107,9 @@ function putObjectMock(bucketName, objectName, fields, cb) {
  */
 function getArchiveArchivedMD() {
     return {
-        archive: new ObjectMDArchive({}).getValue(),
+        archive: new ObjectMDArchive(
+            { foo: 0, bar: 'stuff' }, // opaque, can be anything...
+        ).getValue(),
     };
 }
 
@@ -115,7 +119,11 @@ function getArchiveArchivedMD() {
  */
 function getArchiveOngoingRequestMD() {
     return {
-        archive: new ObjectMDArchive({}, new Date(Date.now() - 60), 5).getValue(),
+        archive: new ObjectMDArchive(
+            { foo: 0, bar: 'stuff' }, // opaque, can be anything...
+            new Date(Date.now() - 60),
+            5).getValue(),
+        'x-amz-restore': new ObjectMDAmzRestore(true, new Date(Date.now() + 60 * 60 * 24)),
     };
 }
 
@@ -126,6 +134,7 @@ function getArchiveOngoingRequestMD() {
 function getTransitionInProgressMD() {
     return {
         'x-amz-scal-transition-in-progress': true,
+        'x-amz-scal-transition-time': new Date(Date.now() - 60),
     };
 }
 
@@ -136,12 +145,16 @@ function getTransitionInProgressMD() {
 function getArchiveRestoredMD() {
     return {
         archive: new ObjectMDArchive(
-            {},
+            { foo: 0, bar: 'stuff' }, // opaque, can be anything...
             new Date(Date.now() - 60000),
             5,
             new Date(Date.now() - 10000),
             new Date(Date.now() + 60000 * 60 * 24)).getValue(),
-        'x-amz-restore': new ObjectMDAmzRestore(false, new Date(Date.now() + 60 * 60 * 24)),
+        'x-amz-restore': {
+            'ongoing-request': false,
+            'expiry-date': new Date(Date.now() + 60 * 60 * 24),
+            'content-md5': restoredEtag,
+        },
     };
 }
 
@@ -152,7 +165,7 @@ function getArchiveRestoredMD() {
 function getArchiveExpiredMD() {
     return {
         archive: new ObjectMDArchive(
-            {},
+            { foo: 0, bar: 'stuff' }, // opaque, can be anything...
             new Date(Date.now() - 30000),
             5,
             new Date(Date.now() - 20000),
@@ -171,4 +184,6 @@ module.exports = {
     getTransitionInProgressMD,
     putBucketMock,
     defaultLocation,
+    defaultOwnerId,
+    restoredEtag,
 };

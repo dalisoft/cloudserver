@@ -16,10 +16,13 @@ runs:
       run: |-
         set -exu;
         mkdir -p /tmp/artifacts/${JOB_NAME}/;
-    - uses: actions/setup-node@v2
+    - uses: actions/setup-node@v4
       with:
         node-version: '16'
         cache: 'yarn'
+    - name: install typescript
+      shell: bash
+      run: yarn global add typescript@4.9.5
     - name: install dependencies
       shell: bash
       run: yarn install --ignore-engines --frozen-lockfile --network-concurrency 1
@@ -35,3 +38,9 @@ runs:
       run: |
         sudo apt-get install -y libdigest-hmac-perl
         pip install 's3cmd==2.3.0'
+    - name: fix sproxyd.conf permissions
+      shell: bash
+      run: sudo chown root:root .github/docker/sproxyd/conf/sproxyd0.conf
+    - name: ensure fuse kernel module is loaded (for sproxyd)
+      shell: bash
+      run: sudo modprobe fuse

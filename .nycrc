@@ -1,0 +1,10 @@
+{
+    "all": true,
+    "include": [
+        "bin/**/*.js",
+        "lib/**/*.js"
+    ],
+    "exclude": [
+        "tests/**/*.js"
+    ]
+}

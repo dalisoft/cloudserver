@@ -1,6 +1,8 @@
 const assert = require('assert');
 const { errors } = require('arsenal');
 const sinon = require('sinon');
+const inMemory = require('../../../lib/kms/in_memory/backend').backend;
+const vault = require('../../../lib/auth/vault');
 
 const { checkLocationConstraint, _handleAuthResults } = require('../../../lib/api/bucketPut');
 const { bucketPut } = require('../../../lib/api/bucketPut');
@@ -488,5 +490,410 @@ describe('bucketPut API', () => {
             handler(tc.error, tc.results);
             assert.deepStrictEqual(cb.getCalls()[0].args, tc.calledWith);
         }));
+    });
+});
+
+describe('bucketPut API with bucket-level encryption', () => {
+    let createBucketKeySpy;
+
+    beforeEach(() => {
+        createBucketKeySpy = sinon.spy(inMemory, 'createBucketKey');
+    });
+
+    afterEach(() => {
+        cleanup();
+        sinon.restore();
+    });
+
+    it('should create a bucket with AES256 algorithm', done => {
+        const testRequestWithEncryption = {
+            ...testRequest,
+            headers: {
+                'host': `${bucketName}.s3.amazonaws.com`,
+                'x-amz-scal-server-side-encryption': 'AES256',
+            },
+        };
+        bucketPut(authInfo, testRequestWithEncryption, log, err => {
+            assert.ifError(err);
+            sinon.assert.calledOnce(createBucketKeySpy);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                const serverSideEncryption = md.getServerSideEncryption();
+                assert.strictEqual(serverSideEncryption.algorithm, 'AES256');
+                assert.strictEqual(serverSideEncryption.mandatory, true);
+                assert(serverSideEncryption.masterKeyId);
+                assert(!serverSideEncryption.isAccountEncryptionEnabled);
+                done();
+            });
+        });
+    });
+
+    it('should create a bucket with aws:kms algorithm', done => {
+        const testRequestWithEncryption = {
+            ...testRequest,
+            headers: {
+                'host': `${bucketName}.s3.amazonaws.com`,
+                'x-amz-scal-server-side-encryption': 'aws:kms',
+            },
+        };
+        bucketPut(authInfo, testRequestWithEncryption, log, err => {
+            assert.ifError(err);
+            sinon.assert.calledOnce(createBucketKeySpy);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                const serverSideEncryption = md.getServerSideEncryption();
+                assert.strictEqual(serverSideEncryption.algorithm, 'aws:kms');
+                assert.strictEqual(serverSideEncryption.mandatory, true);
+                assert(serverSideEncryption.masterKeyId);
+                assert(!serverSideEncryption.isAccountEncryptionEnabled);
+                done();
+            });
+        });
+    });
+
+    it('should create a bucket with aws:kms algorithm and configured key id', done => {
+        const keyId = '12345';
+        const testRequestWithEncryption = {
+            ...testRequest,
+            headers: {
+                'host': `${bucketName}.s3.amazonaws.com`,
+                'x-amz-scal-server-side-encryption': 'aws:kms',
+                'x-amz-scal-server-side-encryption-aws-kms-key-id': keyId,
+            },
+        };
+        bucketPut(authInfo, testRequestWithEncryption, log, err => {
+            assert.ifError(err);
+            sinon.assert.notCalled(createBucketKeySpy);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                assert.deepStrictEqual(md.getServerSideEncryption(), {
+                    cryptoScheme: 1,
+                    algorithm: 'aws:kms',
+                    mandatory: true,
+                    configuredMasterKeyId: keyId,
+                });
+                done();
+            });
+        });
+    });
+
+    // TODO: Currently, the operation does not fail when both the AES256 algorithm
+    // and a KMS key ID are specified. Modify the behavior to ensure that bucket
+    // creation fails in this case.
+    it.skip('should fail creating a bucket with AES256 algorithm and configured key id', done => {
+        const keyId = '12345';
+        const testRequestWithEncryption = {
+            ...testRequest,
+            headers: {
+                'host': `${bucketName}.s3.amazonaws.com`,
+                'x-amz-scal-server-side-encryption': 'AES256',
+                'x-amz-scal-server-side-encryption-aws-kms-key-id': keyId,
+            },
+        };
+        bucketPut(authInfo, testRequestWithEncryption, log, err => {
+            assert(err);
+            done();
+        });
+    });
+});
+
+describe('bucketPut API with account level encryption', () => {
+    let getOrCreateEncryptionKeyIdSpy;
+    const accountLevelMasterKeyId = 'account-level-master-encryption-key';
+
+    beforeEach(() => {
+        sinon.stub(inMemory, 'supportsDefaultKeyPerAccount').value(true);
+        getOrCreateEncryptionKeyIdSpy = sinon.spy(vault, 'getOrCreateEncryptionKeyId');
+    });
+
+    afterEach(() => {
+        cleanup();
+        sinon.restore();
+    });
+
+    it('should create a bucket with AES256 algorithm', done => {
+        const testRequestWithEncryption = {
+            ...testRequest,
+            headers: {
+                'host': `${bucketName}.s3.amazonaws.com`,
+                'x-amz-scal-server-side-encryption': 'AES256',
+            },
+        };
+        bucketPut(authInfo, testRequestWithEncryption, log, err => {
+            assert.ifError(err);
+            sinon.assert.calledOnce(getOrCreateEncryptionKeyIdSpy);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                assert.deepStrictEqual(md.getServerSideEncryption(), {
+                    cryptoScheme: 1,
+                    algorithm: 'AES256',
+                    mandatory: true,
+                    masterKeyId: accountLevelMasterKeyId,
+                    isAccountEncryptionEnabled: true,
+                });
+                done();
+            });
+        });
+    });
+
+    it('should create a bucket with aws:kms algorithm', done => {
+        const testRequestWithEncryption = {
+            ...testRequest,
+            headers: {
+                'host': `${bucketName}.s3.amazonaws.com`,
+                'x-amz-scal-server-side-encryption': 'aws:kms',
+            },
+        };
+        bucketPut(authInfo, testRequestWithEncryption, log, err => {
+            assert.ifError(err);
+            sinon.assert.calledOnce(getOrCreateEncryptionKeyIdSpy);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                assert.deepStrictEqual(md.getServerSideEncryption(), {
+                    cryptoScheme: 1,
+                    algorithm: 'aws:kms',
+                    mandatory: true,
+                    masterKeyId: accountLevelMasterKeyId,
+                    isAccountEncryptionEnabled: true,
+                });
+                done();
+            });
+        });
+    });
+
+    it('should create a bucket with aws:kms algorithm and configured key id', done => {
+        const keyId = '12345';
+        const testRequestWithEncryption = {
+            ...testRequest,
+            headers: {
+                'host': `${bucketName}.s3.amazonaws.com`,
+                'x-amz-scal-server-side-encryption': 'aws:kms',
+                'x-amz-scal-server-side-encryption-aws-kms-key-id': keyId,
+            },
+        };
+        bucketPut(authInfo, testRequestWithEncryption, log, err => {
+            assert.ifError(err);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                sinon.assert.notCalled(getOrCreateEncryptionKeyIdSpy);
+                assert.deepStrictEqual(md.getServerSideEncryption(), {
+                    cryptoScheme: 1,
+                    algorithm: 'aws:kms',
+                    mandatory: true,
+                    configuredMasterKeyId: keyId,
+                });
+                done();
+            });
+        });
+    });
+});
+
+describe('bucketPut API with failed encryption service', () => {
+    beforeEach(() => {
+        sinon.stub(inMemory, 'createBucketKey').callsFake((bucketName, log, cb) => cb(errors.InternalError));
+    });
+
+    afterEach(() => {
+        sinon.restore();
+        cleanup();
+    });
+
+    it('should fail creating bucket', done => {
+        const testRequestWithEncryption = {
+            ...testRequest,
+            headers: {
+                'host': `${bucketName}.s3.amazonaws.com`,
+                'x-amz-scal-server-side-encryption': 'AES256',
+            },
+        };
+        bucketPut(authInfo, testRequestWithEncryption, log, err => {
+            assert(err && err.InternalError);
+            done();
+        });
+    });
+});
+
+describe('bucketPut API with failed vault service', () => {
+    beforeEach(() => {
+        sinon.stub(inMemory, 'supportsDefaultKeyPerAccount').value(true);
+        sinon.stub(vault, 'getOrCreateEncryptionKeyId').callsFake((accountCanonicalId, log, cb) =>
+            cb(errors.ServiceFailure));
+    });
+
+    afterEach(() => {
+        sinon.restore();
+        cleanup();
+    });
+
+    it('should fail putting bucket encryption', done => {
+        const testRequestWithEncryption = {
+            ...testRequest,
+            headers: {
+                'host': `${bucketName}.s3.amazonaws.com`,
+                'x-amz-scal-server-side-encryption': 'AES256',
+            },
+        };
+        bucketPut(authInfo, testRequestWithEncryption, log, err => {
+            assert(err && err.ServiceFailure);
+            done();
+        });
+    });
+});
+
+describe('bucketPut API with SSE Configurations', () => {
+    const initialGlobalEncryption = config.globalEncryptionEnabled;
+
+    afterEach(() => {
+        config.globalEncryptionEnabled = initialGlobalEncryption;
+        cleanup();
+    });
+
+    const createTestRequestWithSSE = sseHeaders => ({
+        ...testRequest,
+        headers: {
+            ...testRequest.headers,
+            ...sseHeaders,
+        },
+    });
+
+    it('should apply default AES256 SSE when global encryption is enabled and no SSE headers are provided', done => {
+        config.globalEncryptionEnabled = true;
+        const request = createTestRequestWithSSE({});
+
+        bucketPut(authInfo, request, log, err => {
+            assert.ifError(err);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                const sse = md.getServerSideEncryption();
+                assert.strictEqual(sse.algorithm, 'AES256');
+                assert.strictEqual(sse.mandatory, true);
+                done();
+            });
+        });
+    });
+
+    it('should override global SSE with bucket-specific SSE headers when provided', done => {
+        config.globalEncryptionEnabled = true;
+        const request = createTestRequestWithSSE({
+            'x-amz-scal-server-side-encryption': 'aws:kms',
+            'x-amz-scal-server-side-encryption-aws-kms-key-id': 'test-kms-key-id',
+        });
+
+        bucketPut(authInfo, request, log, err => {
+            assert.ifError(err);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                const sse = md.getServerSideEncryption();
+                assert.strictEqual(sse.algorithm, 'aws:kms');
+                assert.strictEqual(sse.mandatory, true);
+                assert.strictEqual(sse.configuredMasterKeyId, 'test-kms-key-id');
+                done();
+            });
+        });
+    });
+
+    it('should not apply global SSE when global encryption is disabled and no SSE headers are provided', done => {
+        config.globalEncryptionEnabled = false;
+        const request = createTestRequestWithSSE({});
+
+        bucketPut(authInfo, request, log, err => {
+            assert.ifError(err);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                const sse = md.getServerSideEncryption();
+                assert(!sse);
+                done();
+            });
+        });
+    });
+
+    it('should apply bucket-specific SSE headers when global encryption is disabled', done => {
+        config.globalEncryptionEnabled = false;
+        const request = createTestRequestWithSSE({
+            'x-amz-scal-server-side-encryption': 'AES256',
+        });
+
+        bucketPut(authInfo, request, log, err => {
+            assert.ifError(err);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                const sse = md.getServerSideEncryption();
+                assert.strictEqual(sse.algorithm, 'AES256');
+                assert.strictEqual(sse.mandatory, true);
+                done();
+            });
+        });
+    });
+
+    it('should apply default AES256 SSE when global encryption is enabled and an invalid algorithm is set', done => {
+        config.globalEncryptionEnabled = true;
+        const request = createTestRequestWithSSE({
+            'x-amz-scal-server-side-encryption': 'INVALID_ALGO',
+        });
+
+        bucketPut(authInfo, request, log, err => {
+            assert.ifError(err);
+            metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                const sse = md.getServerSideEncryption();
+                assert.strictEqual(sse.algorithm, 'AES256');
+                assert.strictEqual(sse.mandatory, true);
+                done();
+            });
+        });
+    });
+
+    it('should prioritize bucket-specific SSE over global settings even if global is enabled', done => {
+        config.globalEncryptionEnabled = true;
+        const request = createTestRequestWithSSE({
+            'x-amz-scal-server-side-encryption': 'aws:kms',
+            'x-amz-scal-server-side-encryption-aws-kms-key-id': 'another-kms-key-id',
+        });
+
+        bucketPut(authInfo, request, log, err => {
+            assert.ifError(err);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                const sse = md.getServerSideEncryption();
+                assert.strictEqual(sse.algorithm, 'aws:kms');
+                assert.strictEqual(sse.mandatory, true);
+                assert.strictEqual(sse.configuredMasterKeyId, 'another-kms-key-id');
+                done();
+            });
+        });
+    });
+
+    it('should apply default SSE if global encryption is enabled and no bucket-specific SSE is provided', done => {
+        config.globalEncryptionEnabled = true;
+        const request = createTestRequestWithSSE({});
+
+        bucketPut(authInfo, request, log, err => {
+            assert.ifError(err);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                const sse = md.getServerSideEncryption();
+                assert.strictEqual(sse.algorithm, 'AES256');
+                assert.strictEqual(sse.mandatory, true);
+                done();
+            });
+        });
+    });
+
+    it('should not override bucket-specific SSE with global settings', done => {
+        config.globalEncryptionEnabled = true;
+        const request = createTestRequestWithSSE({
+            'x-amz-scal-server-side-encryption': 'aws:kms',
+        });
+
+        bucketPut(authInfo, request, log, err => {
+            assert.ifError(err);
+            return metadata.getBucket(bucketName, log, (err, md) => {
+                assert.ifError(err);
+                const sse = md.getServerSideEncryption();
+                assert.strictEqual(sse.algorithm, 'aws:kms');
+                assert.strictEqual(sse.mandatory, true);
+                done();
+            });
+        });
     });
 });

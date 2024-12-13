@@ -6,6 +6,9 @@ x-inputs:
   - name: service
     type: constant
     value: artesca-data-connector-s3api-metrics
+  - name: reportJob
+    type: constant
+    value: artesca-data-ops-report-handler
   - name: replicas
     type: constant
   - name: systemErrorsWarningThreshold
@@ -26,6 +29,9 @@ x-inputs:
   - name: deleteLatencyCriticalThreshold
     type: config
     value: 1.000
+  - name: quotaUnavailabilityThreshold
+    type: config
+    value: 0.500
 
 groups:
 - name: CloudServer
@@ -132,3 +138,45 @@ groups:
     annotations:
       description: "Latency of delete object operations is more than 1s"
       summary: "Very high delete latency"
+
+  # As a platform admin I want to be alerted (warning) when the utilization metrics service is enabled
+  # but not available for at least half of the S3 services during the last minute
+  - alert: QuotaMetricsNotAvailable
+    expr: |
+      avg(s3_cloudserver_quota_utilization_service_available{namespace="${namespace}",service="${service}"})
+        < ${quotaUnavailabilityThreshold} and
+        (max(s3_cloudserver_quota_buckets_count{namespace="${namespace}", job="${reportJob}"}) > 0 or
+         max(s3_cloudserver_quota_accounts_count{namespace="${namespace}", job="${reportJob}"}) > 0)
+    labels:
+      severity: warning
+    annotations:
+      description: "The storage metrics required for Account or S3 Bucket Quota checks are not available, the quotas are disabled."
+      summary: "Utilization metrics service not available"
+
+  # As a platform admin I want to be alerted (critical) when the utilization metrics service is enabled
+  # but not available during the last 10 minutes
+  - alert: QuotaMetricsNotAvailable
+    expr: |
+      avg(s3_cloudserver_quota_utilization_service_available{namespace="${namespace}",service="${service}"})
+        < ${quotaUnavailabilityThreshold} and
+        (max(s3_cloudserver_quota_buckets_count{namespace="${namespace}", job="${reportJob}"}) > 0 or
+         max(s3_cloudserver_quota_accounts_count{namespace="${namespace}", job="${reportJob}"}) > 0)
+    for: 10m
+    labels:
+      severity: critical
+    annotations:
+      description: "The storage metrics required for Account or S3 Bucket Quota checks are not available, the quotas are disabled."
+      summary: "Utilization metrics service not available"
+
+  # As a platform admin I want to be alerted (critical) when quotas were not honored due to metrics
+  # being unavailable
+  - alert: QuotaUnavailable
+    expr: |
+      sum(increase(s3_cloudserver_quota_unavailable_count{namespace="${namespace}",service="${service}"}[2m]))
+        > 0
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      description: "Quotas were not honored due to metrics being unavailable. If the S3 Bucket or Account was created recently, the metrics may not be available yet."
+      summary: "High number of quota requests with metrics unavailable"
